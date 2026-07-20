@@ -1,3 +1,4 @@
+import { isPlatformBrowser } from '@angular/common';
 import {
   Injectable,
   PLATFORM_ID,
@@ -5,117 +6,134 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { isPlatformBrowser } from '@angular/common';
 import { Router } from '@angular/router';
 
 import {
   AppRole,
   AuthUser,
-  DemoAccount,
 } from '../models/auth-user.model';
+import {
+  LoginApiResponse,
+} from '../models/login-api.model';
 
 @Injectable({
   providedIn: 'root',
 })
 export class AuthService {
-  private readonly router = inject(Router);
+  private readonly router =
+    inject(Router);
 
-  private readonly platformId = inject(PLATFORM_ID);
+  private readonly platformId =
+    inject(PLATFORM_ID);
 
-  private readonly localStorageKey =
+  private readonly localUserKey =
     'isd-authenticated-user';
 
-  private readonly sessionStorageKey =
+  private readonly sessionUserKey =
     'isd-session-user';
 
-  readonly demoAccounts: readonly DemoAccount[] = [
-    {
-      id: 1,
-      employeeCode: 'EMP-0101',
-      fullName: 'Arun Sarkar',
-      email: 'admin@nirnayanhealthcare.com',
-      password: 'Admin@123',
-      department: 'Information Technology',
-      role: 'System Admin',
-    },
-    {
-      id: 2,
-      employeeCode: 'EMP-0102',
-      fullName: 'Rahul Sharma',
-      email: 'manager@nirnayanhealthcare.com',
-      password: 'Manager@123',
-      department: 'Logistics',
-      role: 'Department Manager',
-    },
-    {
-      id: 3,
-      employeeCode: 'EMP-0106',
-      fullName: 'Sourav Dey',
-      email: 'employee@nirnayanhealthcare.com',
-      password: 'Employee@123',
-      department: 'Customer Relationship Management',
-      role: 'Employee',
-    },
-  ];
+  private readonly localTokenKey =
+    'isd-access-token';
+
+  private readonly sessionTokenKey =
+    'isd-session-access-token';
 
   private readonly currentUserSignal =
-    signal<AuthUser | null>(this.restoreUser());
+    signal<AuthUser | null>(
+      this.restoreUser(),
+    );
 
   readonly currentUser =
     this.currentUserSignal.asReadonly();
 
   readonly isAuthenticated = computed(
-    () => this.currentUserSignal() !== null,
+    () =>
+      this.currentUserSignal() !== null &&
+      Boolean(this.getAccessToken()),
   );
 
   readonly currentRole = computed(
-    () => this.currentUserSignal()?.role ?? null,
+    () =>
+      this.currentUserSignal()?.role ?? null,
   );
 
-  login(
-    email: string,
-    password: string,
+  completeApiLogin(
+    response: LoginApiResponse,
     rememberMe: boolean,
   ): boolean {
-    const normalizedEmail = email
-      .trim()
-      .toLowerCase();
-
-    const account = this.demoAccounts.find(
-      demoAccount =>
-        demoAccount.email.toLowerCase() ===
-          normalizedEmail &&
-        demoAccount.password === password,
-    );
-
-    if (!account) {
+    if (
+      !response.success ||
+      !response.access_token ||
+      !response.employee
+    ) {
       return false;
     }
 
     const authenticatedUser: AuthUser = {
-      id: account.id,
-      employeeCode: account.employeeCode,
-      fullName: account.fullName,
-      email: account.email,
-      department: account.department,
-      role: account.role,
+      id: response.employee.id,
+
+      employeeCode:
+        response.employee.employee_code,
+
+      fullName:
+        response.employee.employee_name,
+
+      email:
+        response.employee.email ??
+        'Not available',
+
+      department:
+        response.employee.department ??
+        this.resolveTemporaryDepartment(
+          response.employee.employee_code,
+        ),
+
+      role:
+        response.employee.role ??
+        this.resolveTemporaryRole(
+          response.employee.employee_code,
+        ),
     };
 
-    this.currentUserSignal.set(authenticatedUser);
+    this.currentUserSignal.set(
+      authenticatedUser,
+    );
 
-    this.saveUser(authenticatedUser, rememberMe);
+    this.saveSession(
+      authenticatedUser,
+      response.access_token,
+      rememberMe,
+    );
 
     return true;
   }
 
+  getAccessToken(): string | null {
+    if (!this.isBrowser()) {
+      return null;
+    }
+
+    return (
+      localStorage.getItem(
+        this.localTokenKey,
+      ) ??
+      sessionStorage.getItem(
+        this.sessionTokenKey,
+      )
+    );
+  }
+
   logout(): void {
     this.currentUserSignal.set(null);
-    this.clearStoredUser();
+
+    this.clearStoredSession();
 
     void this.router.navigate(['/login']);
   }
 
-  hasRole(...allowedRoles: AppRole[]): boolean {
+  hasRole(
+    ...allowedRoles: AppRole[]
+  ): boolean {
     const currentRole =
       this.currentUserSignal()?.role;
 
@@ -130,37 +148,51 @@ export class AuthService {
   }
 
   isDepartmentManager(): boolean {
-    return this.hasRole('Department Manager');
+    return this.hasRole(
+      'Department Manager',
+    );
   }
 
   isEmployee(): boolean {
     return this.hasRole('Employee');
   }
 
-  private saveUser(
+  private saveSession(
     user: AuthUser,
+    accessToken: string,
     rememberMe: boolean,
   ): void {
     if (!this.isBrowser()) {
       return;
     }
 
-    this.clearStoredUser();
+    this.clearStoredSession();
 
-    const serializedUser = JSON.stringify(user);
+    const serializedUser =
+      JSON.stringify(user);
 
     if (rememberMe) {
       localStorage.setItem(
-        this.localStorageKey,
+        this.localUserKey,
         serializedUser,
+      );
+
+      localStorage.setItem(
+        this.localTokenKey,
+        accessToken,
       );
 
       return;
     }
 
     sessionStorage.setItem(
-      this.sessionStorageKey,
+      this.sessionUserKey,
       serializedUser,
+    );
+
+    sessionStorage.setItem(
+      this.sessionTokenKey,
+      accessToken,
     );
   }
 
@@ -172,10 +204,10 @@ export class AuthService {
     try {
       const storedUser =
         localStorage.getItem(
-          this.localStorageKey,
+          this.localUserKey,
         ) ??
         sessionStorage.getItem(
-          this.sessionStorageKey,
+          this.sessionUserKey,
         );
 
       if (!storedUser) {
@@ -187,36 +219,76 @@ export class AuthService {
 
       if (
         !parsedUser.id ||
-        !parsedUser.email ||
+        !parsedUser.employeeCode ||
         !parsedUser.fullName ||
         !parsedUser.role
       ) {
-        this.clearStoredUser();
+        this.clearStoredSession();
         return null;
       }
 
       return parsedUser;
     } catch {
-      this.clearStoredUser();
+      this.clearStoredSession();
       return null;
     }
   }
 
-  private clearStoredUser(): void {
+  private clearStoredSession(): void {
     if (!this.isBrowser()) {
       return;
     }
 
     localStorage.removeItem(
-      this.localStorageKey,
+      this.localUserKey,
+    );
+
+    localStorage.removeItem(
+      this.localTokenKey,
     );
 
     sessionStorage.removeItem(
-      this.sessionStorageKey,
+      this.sessionUserKey,
+    );
+
+    sessionStorage.removeItem(
+      this.sessionTokenKey,
     );
   }
 
+  /*
+   * Temporary mapping because the current login
+   * response does not provide a system role.
+   *
+   * Remove this method when the backend returns role.
+   */
+  private resolveTemporaryRole(
+    employeeCode: string,
+  ): AppRole {
+    if (employeeCode === 'NHCTEST001') {
+      return 'System Admin';
+    }
+
+    return 'Employee';
+  }
+
+  /*
+   * Temporary mapping because the current login
+   * response does not provide a department.
+   */
+  private resolveTemporaryDepartment(
+    employeeCode: string,
+  ): string {
+    if (employeeCode === 'NHCTEST001') {
+      return 'Information Technology';
+    }
+
+    return 'Not Assigned';
+  }
+
   private isBrowser(): boolean {
-    return isPlatformBrowser(this.platformId);
+    return isPlatformBrowser(
+      this.platformId,
+    );
   }
 }

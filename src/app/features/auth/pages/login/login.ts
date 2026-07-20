@@ -1,4 +1,7 @@
 import {
+  HttpErrorResponse,
+} from '@angular/common/http';
+import {
   Component,
   OnInit,
   inject,
@@ -12,9 +15,18 @@ import {
   ActivatedRoute,
   Router,
 } from '@angular/router';
+import {
+  finalize,
+} from 'rxjs';
 
-import { DemoAccount } from '../../../../core/auth/models/auth-user.model';
-import { AuthService } from '../../../../core/auth/services/auth.service';
+import {
+  LoginApiResponse,
+} from '../../../../core/auth/models/login-api.model';
+
+import {
+  AuthService,
+} from '../../../../core/auth/services/auth.service';
+import { AuthApiService } from '../../services/auth-api.service';
 
 @Component({
   selector: 'app-login',
@@ -26,10 +38,14 @@ export class Login implements OnInit {
   private readonly formBuilder =
     inject(FormBuilder);
 
+  private readonly authApiService =
+    inject(AuthApiService);
+
   private readonly authService =
     inject(AuthService);
 
-  private readonly router = inject(Router);
+  private readonly router =
+    inject(Router);
 
   private readonly activatedRoute =
     inject(ActivatedRoute);
@@ -40,18 +56,17 @@ export class Login implements OnInit {
 
   showPassword = false;
 
-  readonly demoAccounts =
-    this.authService.demoAccounts;
-
   readonly loginForm =
     this.formBuilder.nonNullable.group({
-      email: [
+      employeeCode: [
         '',
         [
           Validators.required,
-          Validators.email,
+          Validators.minLength(3),
+          Validators.maxLength(50),
         ],
       ],
+
       password: [
         '',
         [
@@ -59,12 +74,15 @@ export class Login implements OnInit {
           Validators.minLength(6),
         ],
       ],
+
       rememberMe: [true],
     });
 
   ngOnInit(): void {
     if (this.authService.isAuthenticated()) {
-      void this.router.navigate(['/dashboard']);
+      void this.router.navigate([
+        '/dashboard',
+      ]);
     }
   }
 
@@ -79,55 +97,108 @@ export class Login implements OnInit {
     this.isSubmitting = true;
 
     const {
-      email,
+      employeeCode,
       password,
       rememberMe,
     } = this.loginForm.getRawValue();
 
-    const loginSuccessful =
-      this.authService.login(
-        email,
+    this.authApiService
+      .login({
+        employee_code:
+          employeeCode.trim(),
         password,
-        rememberMe,
-      );
+      })
+      .pipe(
+        finalize(() => {
+          this.isSubmitting = false;
+        }),
+      )
+      .subscribe({
+        next: (
+          response: LoginApiResponse,
+        ) => {
+          const loginCompleted =
+            this.authService
+              .completeApiLogin(
+                response,
+                rememberMe,
+              );
 
-    if (!loginSuccessful) {
-      this.isSubmitting = false;
+          if (!loginCompleted) {
+            this.loginError =
+              response.message ||
+              'Unable to complete login.';
 
-      this.loginError =
-        'The email address or password is incorrect.';
+            return;
+          }
 
-      return;
-    }
+          const requestedReturnUrl =
+            this.activatedRoute.snapshot
+              .queryParamMap.get(
+                'returnUrl',
+              );
 
-    const requestedReturnUrl =
-      this.activatedRoute.snapshot.queryParamMap.get(
-        'returnUrl',
-      );
+          void this.router.navigateByUrl(
+            this.getSafeReturnUrl(
+              requestedReturnUrl,
+            ),
+          );
+        },
 
-    const safeReturnUrl =
-      requestedReturnUrl?.startsWith('/')
-        ? requestedReturnUrl
-        : '/dashboard';
+        error: (
+          error: HttpErrorResponse,
+        ) => {
+          console.error(
+            'Login API error:',
+            error,
+          );
 
-    void this.router.navigateByUrl(
-      safeReturnUrl,
-    );
-  }
-
-  loginWithDemoAccount(
-    account: DemoAccount,
-  ): void {
-    this.loginForm.patchValue({
-      email: account.email,
-      password: account.password,
-      rememberMe: true,
-    });
-
-    this.submitLogin();
+          this.loginError =
+            this.getLoginErrorMessage(
+              error,
+            );
+        },
+      });
   }
 
   togglePasswordVisibility(): void {
-    this.showPassword = !this.showPassword;
+    this.showPassword =
+      !this.showPassword;
+  }
+
+  private getSafeReturnUrl(
+    returnUrl: string | null,
+  ): string {
+    if (
+      !returnUrl ||
+      !returnUrl.startsWith('/') ||
+      returnUrl.startsWith('//') ||
+      returnUrl.startsWith('/login')
+    ) {
+      return '/dashboard';
+    }
+
+    return returnUrl;
+  }
+
+  private getLoginErrorMessage(
+    error: HttpErrorResponse,
+  ): string {
+    if (error.status === 0) {
+      return 'Unable to connect to the Helpdesk server. Please check the API or CORS configuration.';
+    }
+
+    if (
+      typeof error.error?.message ===
+      'string'
+    ) {
+      return error.error.message;
+    }
+
+    if (error.status === 401) {
+      return 'Invalid employee code or password.';
+    }
+
+    return 'Login failed. Please try again.';
   }
 }

@@ -1,4 +1,5 @@
 export const environment = {
-    production: true,
-    apiBaseUrl: '/api',
+  production: true,
+  apiBaseUrl:
+    'https://helpdesk-api.nirnayanhealthcare.com',
 };

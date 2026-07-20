@@ -97,50 +97,56 @@
         (ngSubmit)="submitLogin()"
       >
         <div class="form-group">
-          <label
-            for="loginEmail"
-            class="form-label"
-          >
-            Corporate Email
-          </label>
+  <label
+    for="employeeCode"
+    class="form-label"
+  >
+    Employee Code
+  </label>
 
-          <div class="input-group">
-            <span class="input-group-text">
-              <i class="bi bi-envelope"></i>
-            </span>
+  <div class="input-group">
+    <span class="input-group-text">
+      <i class="bi bi-person-badge"></i>
+    </span>
 
-            <input
-              id="loginEmail"
-              type="email"
-              class="form-control"
-              formControlName="email"
-              placeholder="name@nirnayanhealthcare.com"
-              autocomplete="username"
-              [class.is-invalid]="
-                loginForm.controls.email.touched &&
-                loginForm.controls.email.invalid
-              "
-            />
-          </div>
+    <input
+      id="employeeCode"
+      type="text"
+      class="form-control"
+      formControlName="employeeCode"
+      placeholder="Enter employee code"
+      autocomplete="username"
+      autocapitalize="characters"
+      [class.is-invalid]="
+        loginForm.controls.employeeCode.touched &&
+        loginForm.controls.employeeCode.invalid
+      "
+    />
+  </div>
 
-          @if (
-            loginForm.controls.email.touched &&
-            loginForm.controls.email.hasError('required')
-          ) {
-            <div class="field-error">
-              Corporate email is required.
-            </div>
-          }
+  @if (
+    loginForm.controls.employeeCode.touched &&
+    loginForm.controls.employeeCode.hasError(
+      'required'
+    )
+  ) {
+    <div class="field-error">
+      Employee code is required.
+    </div>
+  }
 
-          @if (
-            loginForm.controls.email.touched &&
-            loginForm.controls.email.hasError('email')
-          ) {
-            <div class="field-error">
-              Enter a valid email address.
-            </div>
-          }
-        </div>
+  @if (
+    loginForm.controls.employeeCode.touched &&
+    loginForm.controls.employeeCode.hasError(
+      'minlength'
+    )
+  ) {
+    <div class="field-error">
+      Employee code must contain at least
+      3 characters.
+    </div>
+  }
+</div>
 
         <div class="form-group">
           <label
@@ -242,61 +248,6 @@
         </button>
       </form>
 
-      <section class="demo-section">
-        <div class="demo-divider">
-          <span>Demo accounts</span>
-        </div>
-
-        <p class="demo-description">
-          Select an account to test each system role.
-        </p>
-
-        <div class="demo-account-list">
-          @for (
-            account of demoAccounts;
-            track account.email
-          ) {
-            <button
-              type="button"
-              class="demo-account"
-              (click)="loginWithDemoAccount(account)"
-            >
-              <span
-                class="demo-icon"
-                [class.admin-icon]="
-                  account.role === 'System Admin'
-                "
-                [class.manager-icon]="
-                  account.role === 'Department Manager'
-                "
-                [class.employee-icon]="
-                  account.role === 'Employee'
-                "
-              >
-                <i
-                  class="bi"
-                  [class.bi-shield-lock]="
-                    account.role === 'System Admin'
-                  "
-                  [class.bi-person-badge]="
-                    account.role === 'Department Manager'
-                  "
-                  [class.bi-person]="
-                    account.role === 'Employee'
-                  "
-                ></i>
-              </span>
-
-              <span class="demo-content">
-                <strong>{{ account.role }}</strong>
-                <small>{{ account.email }}</small>
-              </span>
-
-              <i class="bi bi-arrow-right"></i>
-            </button>
-          }
-        </div>
-      </section>
     </div>
   </div>
 </section>
